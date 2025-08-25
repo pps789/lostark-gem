@@ -235,6 +235,7 @@ void maybe_log(int size){
     if (size/10000 > log_data) {
         printf("Size: %d\n", size);
         log_data = size/10000;
+        fflush(stdout);
     }
 }
 
@@ -304,14 +305,19 @@ void Test(int charge, int reroll, pair<int,int> target) {
     gem.charge = charge; gem.reroll = reroll;
 
     printf("=== Charge %d, Reroll %d, target %d %d ===\n", charge, reroll, target.first, target.second);
+    fflush(stdout);
     printf("NO REROLL: %.10Lf\n", Run(gem, stat_objective, false));
+    fflush(stdout);
     printf("DO REROLL: %.10Lf\n", Run(gem, stat_objective, true));
+    fflush(stdout);
 }
 
 int main() {
     init_modifiers();
     test_modifiers();
     test_explore();
+
+    fflush(stdout);
 
     // Blue
     Test(7, 1, {4,4});
