@@ -99,10 +99,42 @@ void init_modifiers(){
 
     // Verification.
     printf("Total modifiers: %d\n", MODIFIERS.size());
+    probtype tot_prob = 0;
     for (int i=0; i<NUM_MODIFIERS; i++) {
         MODIFIERS[i].first.print();
         printf("Prob: %.10Lf%%\n\n", MODIFIERS[i].second*100);
+        tot_prob += MODIFIERS[i].second;
     }
+    printf("Total Prob: %.10Lf\n\n", tot_prob);
+}
+
+struct Gem {
+    vector<int> stat{4, 1};
+    int cost = 0;
+    int charge = 0;
+    int reroll = 0;
+};
+
+bool verify_modifier(const Gem& gem, const int modifier_id) {
+    const Modifier& modifier = MODIFIERS[modifier_id].first;
+    if (modifier.type == TYPE_MODIFIER || modifier.type == IDENTITY_MODIFIER) return true;
+    if (modifier.type == STAT_MODIFIER) {
+        int next_stat = gem.stat[modifier.stat_modifier_index] + modifier.stat_modifier_amount;
+        if (next_stat <= 0 || next_stat >= 6) return false;
+        else return true;
+    }
+    if (modifier.type == COST_MODIFIER) {
+        if (gem.charge == 1) return false;
+        if (gem.cost == modifier.cost_modifier_amount) return false;
+        return true;
+    }
+    if (modifier.type == REROLL_MODIFIER) {
+        if (gem.charge == 1) return false;
+        return true;
+    }
+
+    // Unreachable
+    return true;
 }
 
 int main() {
