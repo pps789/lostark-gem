@@ -221,6 +221,7 @@ probtype Foo(const Gem& gem, const vector<int>& stat_objective) {
     return ret;
 }
 
+bool REROLL_MODE = true;
 probtype Bar(const Gem& gem, const vector<int>& stat_objective, vector<int> modifier_list) {
     // Two options: reroll, process
     
@@ -232,7 +233,7 @@ probtype Bar(const Gem& gem, const vector<int>& stat_objective, vector<int> modi
 
     // Reroll
     probtype reroll_prob = 0;
-    if (gem.reroll > 0) {
+    if (gem.reroll > 0 && REROLL_MODE) {
         Gem reroll_gem = gem;
         reroll_gem.reroll--;
         reroll_prob = Foo(reroll_gem, stat_objective);
@@ -241,6 +242,33 @@ probtype Bar(const Gem& gem, const vector<int>& stat_objective, vector<int> modi
     return max(process_prob, reroll_prob);
 }
 
+probtype Test(int charge, int reroll, pair<int,int> target) {
+    vector<int> stat_objective{2, 1};
+    stat_objective.push_back(target.first);
+    stat_objective.push_back(target.second);
+
+    Gem gem;
+    gem.charge = charge; gem.reroll = reroll;
+
+    printf("=== Charge %d, Reroll %d, target %d %d ===\n", charge, reroll, target.first, target.second);
+    FooData.clear();
+    REROLL_MODE = false;
+    printf("NO REROLL: %.10Lf\n", Foo(gem, stat_objective));
+    REROLL_MODE = true;
+    FooData.clear();
+    printf("DO REROLL: %.10Lf\n", Foo(gem, stat_objective));
+}
+
 int main() {
     init_modifiers();
+
+    // Blue
+    Test(7, 1, {4,4});
+    Test(7, 1, {4,5});
+    Test(7, 1, {5,5});
+
+    // Purple
+    Test(9, 2, {4,4});
+    Test(9, 2, {4,5});
+    Test(9, 2, {5,5});
 }
