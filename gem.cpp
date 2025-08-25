@@ -95,12 +95,12 @@ void init_modifiers(){
         Modifier modifier;
         modifier.type = REROLL_MODIFIER;
         modifier.identifier = identifier++;
-        modifier.cost_modifier_amount = reroll_modifier.first;
+        modifier.reroll_modifier_amount = reroll_modifier.first;
         MODIFIERS.push_back({modifier, reroll_modifier.second});
     }
 
     // Verification.
-    printf("Total modifiers: %d\n", MODIFIERS.size());
+    printf("Total modifiers: %lu\n", MODIFIERS.size());
     probtype tot_prob = 0;
     for (int i=0; i<NUM_MODIFIERS; i++) {
         MODIFIERS[i].first.print();
@@ -111,16 +111,24 @@ void init_modifiers(){
 }
 
 struct Gem {
-    vector<int> stat{GEM_STAT_NUM, 1};
-    int charge = 0;
-    int cost = 0;
-    int reroll = 0;
+    vector<int> stat;
+    int charge;
+    int cost;
+    int reroll;
+
+    Gem(): stat(GEM_STAT_NUM, 1), charge(0), cost(0), reroll(0) {}
 
     const bool operator< (const Gem& rhs) const {
         if (stat != rhs.stat) return stat<rhs.stat;
         if (charge != rhs.charge) return charge<rhs.charge;
         if (cost != rhs.cost) return cost<rhs.cost;
         return reroll < rhs.reroll;
+    }
+
+    void print() const {
+        printf("Stat: %d %d %d %d\n", stat[0], stat[1], stat[2], stat[3]);
+        printf("Charge/Cost/Reroll: %d/%d/%d\n", charge, cost, reroll);
+        printf("\n");
     }
 };
 
@@ -172,12 +180,14 @@ vector<pair<vector<int>, probtype>> Explore(const Gem& gem) {
     for(int a=0; a<NUM_MODIFIERS; a++) if (verify_modifier(gem, a))
         for(int b=a+1; b<NUM_MODIFIERS; b++) if (verify_modifier(gem, b))
             for(int c=b+1; c<NUM_MODIFIERS; c++) if (verify_modifier(gem, c))
-                for(int d=c+1; c<NUM_MODIFIERS; c++) if (verify_modifier(gem, d)) {
+                for(int d=c+1; d<NUM_MODIFIERS; d++) if (verify_modifier(gem, d)) {
         probtype prob = 0;
         vector<int> modifiers = {a, b, c, d};
         do {
-            probtype cur = MODIFIERS[a].second / base_residue;
-            probtype residue = base_residue - MODIFIERS[a].second;
+            probtype residue = base_residue;
+
+            probtype cur = MODIFIERS[a].second / residue;
+            residue -= MODIFIERS[a].second;
 
             cur *= MODIFIERS[b].second / residue;
             residue -= MODIFIERS[b].second;
@@ -196,9 +206,37 @@ vector<pair<vector<int>, probtype>> Explore(const Gem& gem) {
     return ret;
 }
 
+void test_explore() {
+    Gem gem;
+    gem.stat = {5, 5, 5, 5};
+    gem.charge = 1;
+    gem.cost = 1;
+    auto ret = Explore(gem);
+
+    probtype tot_prob = 0;
+    for(const auto& mod_prob: ret) {
+        tot_prob += mod_prob.second;
+    }
+    for (const auto& mod_prob: ret) {
+        for (const auto& mod: mod_prob.first) printf("%d\t", mod);
+        printf("%.10Lf", mod_prob.second);
+        printf("\n");
+    }
+    printf("Exp size: %lu\n", ret.size());
+    printf("Tot prob: %.10Lf\n", tot_prob);
+}
+
 map<Gem, probtype> FooData;
 probtype Foo(const Gem& gem, const vector<int>& stat_objective);
 probtype Bar(const Gem& gem, const vector<int>& stat_objective, vector<int> modifier_list);
+
+int log_data;
+void maybe_log(int size){
+    if (size/10000 > log_data) {
+        printf("Size: %d\n", size);
+        log_data = size/10000;
+    }
+}
 
 probtype Foo(const Gem& gem, const vector<int>& stat_objective) {
     // Check Cache first.
@@ -206,11 +244,12 @@ probtype Foo(const Gem& gem, const vector<int>& stat_objective) {
 
     // Check Boundary conditions.
     bool done = true;
-    for(int i=0;i<GEM_STAT_NUM;i++) if (gem.stat[i] < stat_objective[i]) done = false;
+    for(int i=0; i<GEM_STAT_NUM; i++) if (gem.stat[i] < stat_objective[i]) done = false;
     if (done) return FooData[gem] = 1.;
     if (gem.charge == 0) return FooData[gem] = 0.;
 
     probtype& ret = FooData[gem];
+    maybe_log(FooData.size());
     ret = 0;
 
     vector<pair<vector<int>, probtype>> candidates = Explore(gem);
@@ -242,25 +281,37 @@ probtype Bar(const Gem& gem, const vector<int>& stat_objective, vector<int> modi
     return max(process_prob, reroll_prob);
 }
 
-probtype Test(int charge, int reroll, pair<int,int> target) {
-    vector<int> stat_objective{2, 1};
-    stat_objective.push_back(target.first);
-    stat_objective.push_back(target.second);
+void test_modifiers() {
+    Gem gem;
+    gem.charge = 7;
+    gem.reroll = 1;
+    gem.print();
+
+    for (int i=0; i<NUM_MODIFIERS; i++) modify(gem, i).print();
+}
+
+probtype Run(Gem gem, const vector<int>& stat_objective, bool reroll) {
+    FooData.clear();
+    REROLL_MODE = reroll;
+    log_data = 0;
+    return Foo(gem, stat_objective);
+}
+
+void Test(int charge, int reroll, pair<int,int> target) {
+    vector<int> stat_objective = {1, 1, target.first, target.second};
 
     Gem gem;
     gem.charge = charge; gem.reroll = reroll;
 
     printf("=== Charge %d, Reroll %d, target %d %d ===\n", charge, reroll, target.first, target.second);
-    FooData.clear();
-    REROLL_MODE = false;
-    printf("NO REROLL: %.10Lf\n", Foo(gem, stat_objective));
-    REROLL_MODE = true;
-    FooData.clear();
-    printf("DO REROLL: %.10Lf\n", Foo(gem, stat_objective));
+    printf("NO REROLL: %.10Lf\n", Run(gem, stat_objective, false));
+    printf("DO REROLL: %.10Lf\n", Run(gem, stat_objective, true));
 }
 
 int main() {
     init_modifiers();
+    test_modifiers();
+    test_explore();
 
     // Blue
     Test(7, 1, {4,4});
