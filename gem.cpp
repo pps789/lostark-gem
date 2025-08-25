@@ -186,16 +186,16 @@ vector<pair<vector<int>, probtype>> Explore(const Gem& gem) {
         do {
             probtype residue = base_residue;
 
-            probtype cur = MODIFIERS[a].second / residue;
-            residue -= MODIFIERS[a].second;
+            probtype cur = MODIFIERS[modifiers[0]].second / residue;
+            residue -= MODIFIERS[modifiers[0]].second;
 
-            cur *= MODIFIERS[b].second / residue;
-            residue -= MODIFIERS[b].second;
+            cur *= MODIFIERS[modifiers[1]].second / residue;
+            residue -= MODIFIERS[modifiers[1]].second;
 
-            cur *= MODIFIERS[c].second / residue;
-            residue -= MODIFIERS[c].second;
+            cur *= MODIFIERS[modifiers[2]].second / residue;
+            residue -= MODIFIERS[modifiers[2]].second;
 
-            cur *= MODIFIERS[d].second / residue;
+            cur *= MODIFIERS[modifiers[3]].second / residue;
 
             prob += cur;
         } while (next_permutation(modifiers.begin(), modifiers.end()));
