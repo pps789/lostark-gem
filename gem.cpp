@@ -226,57 +226,45 @@ void test_explore() {
     printf("Tot prob: %.10Lf\n", tot_prob);
 }
 
-map<Gem, probtype> FooData;
-probtype Foo(const Gem& gem, const vector<int>& stat_objective);
-probtype Bar(const Gem& gem, const vector<int>& stat_objective, vector<int> modifier_list);
+probtype Foo(const Gem& gem, const vector<int>& stat_objective, bool can_reroll, map<Gem, probtype>& data);
+probtype Bar(const Gem& gem, const vector<int>& stat_objective, bool can_reroll, const vector<int>& modifier_list, map<Gem, probtype>& data);
 
-int log_data;
-void maybe_log(int size){
-    if (size/10000 > log_data) {
-        printf("Size: %d\n", size);
-        log_data = size/10000;
-        fflush(stdout);
-    }
-}
-
-probtype Foo(const Gem& gem, const vector<int>& stat_objective) {
+probtype Foo(const Gem& gem, const vector<int>& stat_objective, bool can_reroll, map<Gem, probtype>& data) {
     // Check Cache first.
-    if (FooData.find(gem) != FooData.end()) return FooData[gem];
+    if (data.find(gem) != data.end()) return data[gem];
 
     // Check Boundary conditions.
     bool done = true;
     for(int i=0; i<GEM_STAT_NUM; i++) if (gem.stat[i] < stat_objective[i]) done = false;
-    if (done) return FooData[gem] = 1.;
-    if (gem.charge == 0) return FooData[gem] = 0.;
+    if (done) return data[gem] = 1.;
+    if (gem.charge == 0) return data[gem] = 0.;
 
-    probtype& ret = FooData[gem];
-    maybe_log(FooData.size());
+    probtype& ret = data[gem];
     ret = 0;
 
     vector<pair<vector<int>, probtype>> candidates = Explore(gem);
     for(const auto& cand: candidates) {
-        ret += Bar(gem, stat_objective, cand.first) * cand.second;
+        ret += Bar(gem, stat_objective, can_reroll, cand.first, data) * cand.second;
     }
 
     return ret;
 }
 
-bool REROLL_MODE = true;
-probtype Bar(const Gem& gem, const vector<int>& stat_objective, vector<int> modifier_list) {
+probtype Bar(const Gem& gem, const vector<int>& stat_objective, bool can_reroll, const vector<int>& modifier_list, map<Gem, probtype>& data) {
     // Two options: reroll, process
     
     // Process
     probtype process_prob = 0;
     for(int modifier_id: modifier_list) {
-        process_prob += 0.25 * Foo(modify(gem, modifier_id), stat_objective);
+        process_prob += 0.25 * Foo(modify(gem, modifier_id), stat_objective, can_reroll, data);
     }
 
     // Reroll
     probtype reroll_prob = 0;
-    if (gem.reroll > 0 && REROLL_MODE) {
+    if (can_reroll && gem.reroll > 0) {
         Gem reroll_gem = gem;
         reroll_gem.reroll--;
-        reroll_prob = Foo(reroll_gem, stat_objective);
+        reroll_prob = Foo(reroll_gem, stat_objective, can_reroll, data);
     }
 
     return max(process_prob, reroll_prob);
@@ -291,41 +279,82 @@ void test_modifiers() {
     for (int i=0; i<NUM_MODIFIERS; i++) modify(gem, i).print();
 }
 
-probtype Run(Gem gem, const vector<int>& stat_objective, bool reroll) {
-    FooData.clear();
-    REROLL_MODE = reroll;
-    log_data = 0;
-    return Foo(gem, stat_objective);
-}
-
-void Test(int charge, int reroll, pair<int,int> target) {
-    vector<int> stat_objective = {1, 1, target.first, target.second};
-
+map<pair<vector<int>, bool>, map<Gem, probtype>> Database;
+void Test(int charge, int reroll, const vector<int>& stat_objective, bool can_reroll) {
     Gem gem;
     gem.charge = charge; gem.reroll = reroll;
 
-    printf("=== Charge %d, Reroll %d, target %d %d ===\n", charge, reroll, target.first, target.second);
+    printf("=== Preparing data ===\n");
+    printf("=== Charge %d, Reroll %d ===\n", charge, reroll);
+    printf("=== Target "); for (int t: stat_objective) printf("%d ", t); printf("===\n");
+    printf("=== Use reroll? "); printf(can_reroll ? "Y" : "N"); printf(" ===\n");
     fflush(stdout);
-    printf("NO REROLL: %.10Lf\n", Run(gem, stat_objective, false));
+    map<Gem, probtype>& data = Database[make_pair(stat_objective, can_reroll)];
+    Foo(gem, stat_objective, can_reroll, data);
+    printf("Done.\n");
     fflush(stdout);
-    printf("DO REROLL: %.10Lf\n", Run(gem, stat_objective, true));
+}
+
+// Solve if we can't reroll at first turn.
+probtype RandomSolve(int charge, int reroll, const vector<int>& stat_objective, bool can_reroll) {
+    Gem gem;
+    gem.charge = charge; gem.reroll = reroll;
+
+    printf("=== Solving for random gem ===\n");
+    printf("=== Charge %d, Reroll %d ===\n", charge, reroll);
+    printf("=== Target "); for (int t: stat_objective) printf("%d ", t); printf("===\n");
+    printf("=== Use reroll? "); printf(can_reroll ? "Y" : "N"); printf(" ===\n");
     fflush(stdout);
+
+    probtype ret = 0;
+    map<Gem, probtype>& data = Database[make_pair(stat_objective, can_reroll)];
+    vector<pair<vector<int>, probtype>> candidates = Explore(gem);
+    for (const auto& cand: candidates) {
+        for (const int modifier_id: cand.first) {
+            ret += 0.25 * Foo(modify(gem, modifier_id), stat_objective, can_reroll, data) * cand.second;
+        }
+    }
+
+    printf("Prob: %.10Lf\n", ret);
+    fflush(stdout);
+    return ret;
 }
 
 int main() {
     init_modifiers();
+    /*
     test_modifiers();
     test_explore();
 
     fflush(stdout);
+    */
 
-    // Blue
-    Test(7, 1, {4,4});
-    Test(7, 1, {4,5});
-    Test(7, 1, {5,5});
+    Test(7, 1, {1,1,4,4}, false);
+    Test(9, 2, {1,1,4,4}, false);
+    Test(7, 1, {1,1,4,5}, false);
+    Test(9, 2, {1,1,4,5}, false);
+    Test(7, 1, {1,1,5,5}, false);
+    Test(9, 2, {1,1,5,5}, false);
 
-    // Purple
-    Test(9, 2, {4,4});
-    Test(9, 2, {4,5});
-    Test(9, 2, {5,5});
+    Test(7, 1, {1,1,4,4}, true);
+    Test(9, 2, {1,1,4,4}, true);
+    Test(7, 1, {1,1,4,5}, true);
+    Test(9, 2, {1,1,4,5}, true);
+    Test(7, 1, {1,1,5,5}, true);
+    Test(9, 2, {1,1,5,5}, true);
+
+
+    RandomSolve(7, 1, {1,1,4,4}, false);
+    RandomSolve(9, 2, {1,1,4,4}, false);
+    RandomSolve(7, 1, {1,1,4,5}, false);
+    RandomSolve(9, 2, {1,1,4,5}, false);
+    RandomSolve(7, 1, {1,1,5,5}, false);
+    RandomSolve(9, 2, {1,1,5,5}, false);
+
+    RandomSolve(7, 1, {1,1,4,4}, true);
+    RandomSolve(9, 2, {1,1,4,4}, true);
+    RandomSolve(7, 1, {1,1,4,5}, true);
+    RandomSolve(9, 2, {1,1,4,5}, true);
+    RandomSolve(7, 1, {1,1,5,5}, true);
+    RandomSolve(9, 2, {1,1,5,5}, true);
 }
